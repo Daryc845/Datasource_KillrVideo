@@ -1,14 +1,10 @@
-// Sample schema for Apache Cassandra
-
-// IF EXISTS added for Cassandra 2.1
-// CQL 3.1.0
 DROP KEYSPACE IF EXISTS killrvideo;
-CREATE KEYSPACE killrvideo WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };
+CREATE KEYSPACE killrvideo 
+WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 3 };
 
-use killrvideo;
+USE killrvideo;
 
-// User credentials, keyed by email address so we can authenticate
-// Seperated from user in case auth is external (Google, Facebook, etc...)
+-- Tabla de credenciales de usuario
 CREATE TABLE user_credentials (
    email text,
    password text,
@@ -16,8 +12,7 @@ CREATE TABLE user_credentials (
    PRIMARY KEY (email)
 );
 
-// Basic entity table for a user
-// UUID for userid to link to auth system
+-- Tabla principal de usuarios
 CREATE TABLE users (
    userid uuid,
    firstname varchar,
@@ -27,37 +22,7 @@ CREATE TABLE users (
    PRIMARY KEY (userid)
 );
 
-// CQL
-// Create an index on first name in users table.
-// NonTokenizingAnalyzer is used for only match equality
-// making it case_sensitive false eliminates any normalization problems.
-CREATE CUSTOM INDEX ON users (firstname)
-USING 'org.apache.cassandra.index.sasi.SASIIndex'
-WITH OPTIONS = {
-  'analyzer_class':
-  'org.apache.cassandra.index.sasi.analyzer.NonTokenizingAnalyzer',
-  'case_sensitive': 'false'
-};
-
-// SASI Index on lastname supports a LIKE '%term%' query
-// with the mode: CONTAINS
-CREATE CUSTOM INDEX ON users (lastname)
-USING 'org.apache.cassandra.index.sasi.SASIIndex'
-WITH OPTIONS = {'mode': 'CONTAINS'};
-
-// SASI Index on email is for the same type of query as lastname
-CREATE CUSTOM INDEX ON users (email)
-USING 'org.apache.cassandra.index.sasi.SASIIndex'
-WITH OPTIONS = {'mode': 'CONTAINS'};
-
-// SASI Index using mode SPARSE is good for unique, dense number ranges
-// and is best for range queries on timestamps
-CREATE CUSTOM INDEX ON users (created_date)
-USING 'org.apache.cassandra.index.sasi.SASIIndex'
-WITH OPTIONS = {'mode': 'SPARSE'};
-
-// User Defined Type introduced in CQL 3.2 spec
-// Meta data - Height, Width, Bit rate, Encoding
+-- Tipo definido por el usuario
 CREATE TYPE video_metadata (
    height int,
    width int,
@@ -65,7 +30,7 @@ CREATE TYPE video_metadata (
    encoding text
 );
 
-// Entity table that will store many videos for a unique user
+-- Tabla de videos
 CREATE TABLE videos (
    videoid uuid,
    userid uuid,
@@ -73,37 +38,24 @@ CREATE TABLE videos (
    description varchar,
    location text,
    location_type int,
-   preview_thumbnails map<text,text>,  // <position in video, url of thumbnail>
+   preview_thumbnails map<text,text>,
    tags set<varchar>,
-   metadata set <frozen<video_metadata>>,
+   metadata set<frozen<video_metadata>>,
    added_date timestamp,
    PRIMARY KEY (videoid)
 );
 
-// CQL 3.2 spec included secondary indexes of collections
-// These are not for speed but convenience
-CREATE INDEX tags_idx ON videos(ENTRIES(tags)); 
-
-// CQL 3.4 spec introduced MATERIALIZED VIEWS
-CREATE MATERIALIZED VIEW videos_by_location
-AS SELECT userid, added_date, videoid, location
-FROM videos
-WHERE videoId IS NOT NULL AND location IS NOT NULL
-PRIMARY KEY(location, videoid);
-
-// One-to-many from the user point of view
-// Also know as a lookup table
+-- Tabla relacional usuario → videos
 CREATE TABLE user_videos (
    userid uuid,
    added_date timestamp,
    videoid uuid,
    name text,
    preview_image_location text,
-   PRIMARY KEY (userid, added_date, videoid)
+   PRIMARY KEY ((userid), added_date, videoid)
 ) WITH CLUSTERING ORDER BY (added_date DESC, videoid ASC);
 
-// Track latest videos, grouped by day (if we ever develop a bad hotspot from the daily grouping here, we could mitigate by
-// splitting the row using an arbitrary group number, making the partition key (yyyymmdd, group_number))
+-- Últimos videos (agrupados por día)
 CREATE TABLE latest_videos (
    yyyymmdd text,
    added_date timestamp,
@@ -113,7 +65,7 @@ CREATE TABLE latest_videos (
    PRIMARY KEY (yyyymmdd, added_date, videoid)
 ) WITH CLUSTERING ORDER BY (added_date DESC, videoid ASC);
 
-// Counter table
+-- Contador de calificaciones
 CREATE TABLE video_rating (
    videoid uuid,
    rating_counter counter,
@@ -121,15 +73,7 @@ CREATE TABLE video_rating (
    PRIMARY KEY (videoid)
 );
 
-// CQL 3.3 adds user defined functions
-// This function takes the counters in the video rating table and averages them
-// by dividing rating total by rating counter.
-CREATE OR REPLACE FUNCTION avg_rating (rating_counter counter, rating_total counter)
-CALLED ON NULL INPUT
-RETURNS double
-LANGUAGE java AS 'return Double.valueOf(rating_total.doubleValue()/rating_counter.doubleValue());';
-
-// Video ratings by user (to try and mitigate voting multiple times)
+-- Calificaciones de videos por usuario
 CREATE TABLE video_ratings_by_user (
    videoid uuid,
    userid uuid,
@@ -137,7 +81,7 @@ CREATE TABLE video_ratings_by_user (
    PRIMARY KEY (videoid, userid)
 );
 
-// Index for tag keywords
+-- Videos agrupados por etiqueta
 CREATE TABLE videos_by_tag (
    tag text,
    videoid uuid,
@@ -148,15 +92,14 @@ CREATE TABLE videos_by_tag (
    PRIMARY KEY (tag, videoid)
 );
 
-// Inverted index for tags by first letter in the tag
+-- Etiquetas agrupadas por primera letra
 CREATE TABLE tags_by_letter (
    first_letter text,
    tag text,
    PRIMARY KEY (first_letter, tag)
 );
 
-// Comments as a many-to-many
-// Looking from the video side to many users
+-- Comentarios por video
 CREATE TABLE comments_by_video (
    videoid uuid,
    commentid timeuuid,
@@ -165,7 +108,7 @@ CREATE TABLE comments_by_video (
    PRIMARY KEY (videoid, commentid)
 ) WITH CLUSTERING ORDER BY (commentid DESC);
 
-// looking from the user side to many videos
+-- Comentarios por usuario
 CREATE TABLE comments_by_user (
    userid uuid,
    commentid timeuuid,
@@ -174,8 +117,7 @@ CREATE TABLE comments_by_user (
    PRIMARY KEY (userid, commentid)
 ) WITH CLUSTERING ORDER BY (commentid DESC);
 
-
-// Time series wide row with reverse comparator
+-- Eventos de video (ej: reproducción, pausa, etc.)
 CREATE TABLE video_event (
    videoid uuid,
    userid uuid,
@@ -183,10 +125,10 @@ CREATE TABLE video_event (
    event varchar,
    event_timestamp timeuuid,
    video_timestamp bigint,
-   PRIMARY KEY ((videoid,userid),event_timestamp,event)
-) WITH CLUSTERING ORDER BY (event_timestamp DESC,event ASC);
+   PRIMARY KEY ((videoid, userid), event_timestamp, event)
+) WITH CLUSTERING ORDER BY (event_timestamp DESC, event ASC);
 
-// Pending uploaded videos by id
+-- Videos subidos
 CREATE TABLE uploaded_videos (
     videoid uuid,
     userid uuid,
@@ -198,7 +140,7 @@ CREATE TABLE uploaded_videos (
     PRIMARY KEY (videoid)
 );
 
-// Same as uploaded_videos just keyed by the encoding job's id
+-- Videos subidos por job ID
 CREATE TABLE uploaded_videos_by_jobid (
     jobid text,
     videoid uuid,
@@ -210,7 +152,7 @@ CREATE TABLE uploaded_videos_by_jobid (
     PRIMARY KEY (jobid)
 );
 
-// Log of notifications from Azure Media Services encoding jobs (latest updates first)
+-- Log de notificaciones de trabajos de codificación
 CREATE TABLE encoding_job_notifications (
     jobid text,
     status_date timestamp,

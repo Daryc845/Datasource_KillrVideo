@@ -22,6 +22,9 @@ VALUES (522b1fe2-2e36-4cef-a667-cd4237d08b89,'Chris','Date', 'cdate@relational.c
 INSERT INTO users (userid, firstname, lastname, email, created_date)
 VALUES (9761d3d7-7fbd-4269-9988-6cfd4e188678,'Patrick','McFadin', 'patrick@datastax.com','2011-06-20 13:50:00');
 
+INSERT INTO users (userid, firstname, lastname, email, created_date)
+VALUES (e76a7e76-1234-4321-8765-abcdefabcdef,'Jenifer','Pacheco','jenifer@datastax.com','2012-07-20 14:55:00');
+
 //Videos
 INSERT INTO videos (videoid, name, userid, description, location, location_type, preview_thumbnails, tags, added_date, metadata)
 VALUES (99051fe9-6a9c-46c2-b949-38ef78858dd0,'My funny cat',d0f60aa8-54a9-4840-b70c-fe562b68842b, 'My cat likes to play the piano! So funny.','/us/vid/b3/b3a76c6b-7c7f-4af6-964f-803a9283c401',1,{'10':'/us/vid/b3/b3a76c6b-7c7f-4af6-964f-803a9283c401'},{'cats','piano','lol'},'2012-06-01 08:00:00',
